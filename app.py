@@ -1,7 +1,10 @@
+import os
 import time
+import urllib.request
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D
 import streamlit as st
@@ -15,15 +18,59 @@ from sklearn.decomposition import PCA
 from scipy.spatial.distance import cdist
 from scipy.stats import pearsonr
 
-# ==================== 1. 全局页面配置与现代工业级 UI 样式 ====================
+# ==================== 1. 全局页面配置与全平台中文字体自动适配 ====================
 st.set_page_config(
-    page_title="盾构推力预测轻量化智能体 V4.0 Ultra",
+    page_title="盾构推力预测轻量化智能体 V5.0 Cloud-Fix",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-plt.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei', 'SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'Arial Unicode MS', 'DejaVu Sans']
+
+@st.cache_resource(show_spinner=False)
+def setup_chinese_font():
+    """自动检测并注册 Linux(Streamlit Cloud) / Windows / macOS 中文字体，彻底消除 [字] 方框乱码"""
+    font_candidates = [
+        # Linux 云端服务器常见开源中文字体路径 (配合 packages.txt 中的 fonts-wqy-zenhei / fonts-noto-cjk)
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        # Windows 本地路径
+        r"C:\Windows\Fonts\simhei.ttf",
+        r"C:\Windows\Fonts\msyh.ttc",
+        r"C:\Windows\Fonts\simsun.ttc",
+        # macOS 本地路径
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+    ]
+    for fpath in font_candidates:
+        if os.path.exists(fpath):
+            fm.fontManager.addfont(fpath)
+            prop = fm.FontProperties(fname=fpath)
+            return prop.get_name()
+
+    # 若云端容器尚未配置 packages.txt，自动从开源仓库拉取思源黑体至临时目录兜底
+    fallback_path = "/tmp/NotoSansSC-Regular.otf"
+    if not os.path.exists(fallback_path):
+        url = "https://raw.githubusercontent.com/googlefonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Regular.otf"
+        try:
+            urllib.request.urlretrieve(url, fallback_path)
+        except Exception:
+            return None
+
+    if os.path.exists(fallback_path):
+        fm.fontManager.addfont(fallback_path)
+        prop = fm.FontProperties(fname=fallback_path)
+        return prop.get_name()
+    return None
+
+cjk_font_name = setup_chinese_font()
+if cjk_font_name:
+    plt.rcParams['font.family'] = [cjk_font_name]
+    plt.rcParams['font.sans-serif'] = [cjk_font_name, 'WenQuanYi Zen Hei', 'SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+else:
+    plt.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei', 'SimHei', 'Microsoft YaHei', 'Arial Unicode MS', 'DejaVu Sans']
+
 plt.rcParams['axes.unicode_minus'] = False
 plt.rcParams['figure.dpi'] = 140
 
@@ -451,7 +498,7 @@ if "rand_seed" not in st.session_state:
     st.session_state.rand_seed = 2026
 
 with st.sidebar:
-    st.header("🎛️ 智能体控制台 (V4.0 Ultra)")
+    st.header("🎛️ 智能体控制台 (V5.0)")
     source_mode = st.radio(
         "1. 选择工程数据接入方式：",
         ["🎲 随机生成一组盾构工程数据", "📂 上传本地真实工程数据表"]
@@ -516,7 +563,7 @@ t_phys = res["theta_phys"]
 
 st.markdown(f"""
 <div class="hero-container">
-    <div class="hero-title">🛡️ 力学逻辑引导的盾构推力预测轻量化智能体 (V4.0 Ultra)</div>
+    <div class="hero-title">🛡️ 力学逻辑引导的盾构推力预测轻量化智能体 (V5.0)</div>
     <div class="hero-subtitle">
         全流程自动化数据治理 · 白金汉 π 无量纲参量构造 · 无截距加性线性 LassoCV 参数辨识 · 六维偏差定量雷达归因 · 毫秒级施工推力预演
     </div>
@@ -680,7 +727,6 @@ with tab3:
 with tab4:
     st.subheader("模块 4：实测推力对比分析与六大核心因素偏差定量归因")
 
-    # 彻底修复坐标轴间距与 R^2 上标渲染的三联科研图
     fig_comp = plt.figure(figsize=(18, 5.2), constrained_layout=True)
     gs_c = gridspec.GridSpec(1, 3, figure=fig_comp, width_ratios=[1.55, 1.0, 1.1])
 
@@ -706,7 +752,7 @@ with tab4:
     ax_c1_err.legend(loc='upper right', fontsize=8.5)
     ax_c1.grid(True, linestyle='--', alpha=0.4)
 
-    # 子图2：1:1 对角散点图（使用 LaTeX $R^2$ 彻底杜绝方框乱码）
+    # 子图2：1:1 对角散点图
     ax_c2 = fig_comp.add_subplot(gs_c[1])
     low_f, high_f = min(f_true_te.min(), f_pred_te.min()) * 0.92, max(f_true_te.max(), f_pred_te.max()) * 1.08
     ax_c2.plot([low_f, high_f], [low_f, high_f], 'k--', linewidth=1.4, label='1:1 理想线')
@@ -736,7 +782,6 @@ with tab4:
     r_col1, r_col2 = st.columns([1.0, 1.85])
 
     with r_col1:
-        # 绘制六维偏差影响度雷达图
         labels_r = list(diag["radar_scores"].keys())
         values_r = list(diag["radar_scores"].values())
         angles = np.linspace(0, 2 * np.pi, len(labels_r), endpoint=False).tolist()
@@ -748,7 +793,8 @@ with tab4:
         ax_rad.fill(angles_plot, values_plot, alpha=0.25, color='#e63946')
         ax_rad.set_thetagrids(np.degrees(angles), labels_r, fontsize=9.5)
         ax_rad.set_ylim(0, 100)
-        ax_rad.set_title("六大偏差来源敏感度定量评分 (0-100)", pad=18, fontsize=11, fontweight='bold')
+        # 移除 fontweight='bold'，避免单一开源字体缺失独立粗体字重文件时触发回退
+        ax_rad.set_title("六大偏差来源敏感度定量评分 (0-100)", pad=18, fontsize=11)
         st.pyplot(fig_rad)
         plt.close(fig_rad)
 
